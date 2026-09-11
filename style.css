@@ -1,0 +1,169 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --color-vibe: #14DBD1;
+  --color-vibe-glow: rgba(20, 219, 209, 0.25);
+  --color-bg-dark: #070a11;
+  --color-card-dark: #0d121d;
+  --color-card-border: #1a2333;
+  --color-buy: #10B981;
+  --color-sell: #EF4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--color-bg-dark);
+  color: #f3f4f6;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f293d;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #14DBD1;
+}
+
+/* Glowing Neon Elements */
+.glow-vibe {
+  box-shadow: 0 0 25px var(--color-vibe-glow);
+}
+.glow-text-vibe {
+  text-shadow: 0 0 12px rgba(20, 219, 209, 0.6);
+}
+.glow-green {
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.35);
+}
+.glow-red {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.35);
+}
+
+.card-vibe {
+  background: var(--color-card-dark);
+  border: 1px solid var(--color-card-border);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+.card-vibe:hover {
+  border-color: rgba(20, 219, 209, 0.4);
+}
+
+/* Radar Pulse Animation */
+@keyframes radar-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(20, 219, 209, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 12px rgba(20, 219, 209, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(20, 219, 209, 0);
+  }
+}
+
+.pulse-radar {
+  animation: radar-pulse 2s infinite;
+}
+
+/* Whale Alert New Row Animation */
+@keyframes flash-new-buy {
+  0% {
+    background-color: rgba(16, 185, 129, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes flash-new-sell {
+  0% {
+    background-color: rgba(239, 68, 68, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.flash-buy {
+  animation: flash-new-buy 1.5s ease-out;
+}
+.flash-sell {
+  animation: flash-new-sell 1.5s ease-out;
+}
+
+/* Navigation Active Tab */
+.nav-item.active {
+  background: rgba(20, 219, 209, 0.12);
+  color: #14DBD1;
+  border-left: 3px solid #14DBD1;
+}
+
+/* Tab indicator */
+.tab-btn.active {
+  background-color: #14DBD1;
+  color: #070a11;
+  font-weight: 700;
+}
+.sparkline-canvas { display: block; }
+
+.progress-bar-vibe {
+  height: 3px;
+  background: #1a2333;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 80px;
+}
+
+.progress-bar-vibe .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #14DBD1, #10B981);
+  border-radius: 2px;
+  transition: width 1s ease;
+}
+
+.sidebar-price-live {
+  transition: color 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  aside.sidebar-main { display: none; }
+  #bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: #090d16;
+    border-top: 1px solid #1a2333;
+    padding: 10px 0 8px;
+    justify-content: space-around;
+  }
+  main.main-content-wrap { padding-bottom: 80px !important; }
+}
+
+@media (min-width: 769px) {
+  #bottom-nav { display: none; }
+}

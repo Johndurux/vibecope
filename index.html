@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VibeScope - Realtime Analytics (Robinhood Chain)</title>
+  <meta property="og:title" content="VibeScope - Realtime Analytics for vibe/vibe">
+  <meta property="og:description" content="Live whale radar, token charts and PNL calculator for vibe/vibe launchpad on Robinhood Chain. Powered by $SCOPE.">
+  <meta property="og:image" content="https://vibescope.vercel.app/logo.jpg">
+  <meta property="og:url" content="https://vibescope.vercel.app">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="logo.jpg" type="image/jpeg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { vibe: { DEFAULT: '#14DBD1', dark: '#0e9c94', glow: 'rgba(20,219,209,0.25)' } } } }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-[#070a11] text-gray-100 min-h-screen flex flex-col antialiased">
+
+  <!-- Top Ticker Bar -->
+  <header class="bg-[#0b0f19] border-b border-gray-800/80 px-4 py-2 text-xs flex items-center justify-between overflow-hidden">
+    <div class="flex items-center gap-3 shrink-0">
+      <span id="rpcStatusBadge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 font-semibold transition-colors duration-500">
+        <span class="w-1.5 h-1.5 rounded-full bg-current animate-ping"></span>
+        CONNECTING...
+      </span>
+      <span id="headerBlockNumber" class="text-gray-400 mono hidden sm:inline">Block #1,849,204</span>
+    </div>
+    <div id="headerLiveWhaleTicker" class="text-gray-300 mono truncate mx-4 flex-1 text-center">
+      WHALE <span class="text-gray-400">0x30ca...f1c5</span> <span class="text-emerald-400">bought</span> <span class="font-bold text-gray-200">$520.40</span> of <span class="text-teal-300 font-semibold">$SCOPE</span>
+    </div>
+    <div class="flex items-center gap-4 shrink-0 mono text-gray-400">
+      <span class="hidden md:inline">ETH: <span id="headerEthTicker" class="text-gray-200 font-semibold">$2,456.79</span></span>
+      <span>$SCOPE: <span id="headerScopeTicker" class="text-teal-400 font-semibold">$0.00412 (+148.5%)</span></span>
+    </div>
+  </header>
+
+  <!-- Main Navbar -->
+  <nav class="bg-[#090d16] border-b border-gray-800 px-4 lg:px-8 py-3 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-3 cursor-pointer" onclick="switchTab('dashboard')">
+      <img src="logo.jpg" alt="VibeScope Logo" class="w-9 h-9 rounded-full object-cover border border-teal-500/50 glow-vibe">
+      <div>
+        <div class="text-lg font-bold tracking-tight text-white flex items-center gap-1.5">
+          Vibe<span class="text-teal-400">Scope</span>
+          <span class="text-[10px] bg-teal-500/20 text-teal-300 px-1.5 rounded border border-teal-500/40 mono font-semibold">REALTIME</span>
+        </div>
+        <div class="text-[11px] text-gray-400 -mt-0.5">Robinhood Chain Intelligence</div>
+      </div>
+    </div>
+    <div class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-400">
+      <a href="https://testnet.vibevibe.fun" target="_blank" class="hover:text-teal-400 transition">vibe/vibe Launchpad &uarr;</a>
+      <a href="https://testnet.vibevibe.fun/token/0xf99E32f9894363C5C3AD889Ed2dfF76f30057F0c" target="_blank" class="text-teal-300 hover:text-teal-200 transition font-semibold">Trade $SCOPE &uarr;</a>
+      <a href="https://discord.gg/vibevibebuilders" target="_blank" class="hover:text-teal-400 transition">Builders Discord &uarr;</a>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-500/10 text-teal-300 border border-teal-500/30 text-[11px] font-mono">
+        <span class="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
+        Robinhood Chain (46630)
+      </span>
+      <button id="soundAlertToggle" onclick="state.soundEnabled=!state.soundEnabled;this.textContent=state.soundEnabled?'&#128266;':'&#128263;'" class="text-lg">&#128263;</button>
+    </div>
+  </nav>
+
+  <!-- Body Layout -->
+  <div class="flex-1 flex flex-col md:flex-row">
+
+    <!-- Sidebar -->
+    <aside class="sidebar-main w-full md:w-64 bg-[#090d16] border-r border-gray-800/80 p-4 shrink-0">
+      <div class="space-y-1.5">
+        <button id="nav-dashboard" onclick="switchTab('dashboard')" class="nav-item active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:bg-gray-800/50 transition text-left">
+          <span>&#128202;</span><span>Dashboard</span>
+        </button>
+        <button id="nav-whales" onclick="switchTab('whales')" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:bg-gray-800/50 transition text-left">
+          <span>&#128051;</span><span class="flex-1">Whale Radar</span><span class="w-2 h-2 rounded-full bg-teal-400 pulse-radar"></span>
+        </button>
+        <button id="nav-charts" onclick="switchTab('charts')" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:bg-gray-800/50 transition text-left">
+          <span>&#128200;</span><span>Token Terminal</span>
+        </button>
+        <button id="nav-calculator" onclick="switchTab('calculator')" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:bg-gray-800/50 transition text-left">
+          <span>&#129518;</span><span>PNL Calculator</span>
+        </button>
+        <button id="nav-scope" onclick="switchTab('scope')" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-teal-300 hover:bg-gray-800/50 transition text-left border border-teal-500/20 bg-teal-950/20">
+          <span>&#128301;</span><span class="flex-1">$SCOPE Token</span><span class="text-[10px] bg-teal-500/30 text-teal-300 px-1.5 py-0.5 rounded mono">PRO</span>
+        </button>
+        <button id="nav-settings" onclick="switchTab('settings')" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:bg-gray-800/50 transition text-left">
+          <span>&#9881;&#65039;</span><span>Settings</span>
+        </button>
+      </div>
+
+      <!-- $SCOPE Sidebar Card -->
+      <div class="mt-8 p-3.5 rounded-xl bg-gradient-to-b from-teal-950/30 to-[#0d121d] border border-teal-500/30 text-xs">
+        <div class="flex items-center justify-between text-gray-400">
+          <span>Native Utility</span><span class="text-teal-400 font-semibold">$SCOPE</span>
+        </div>
+        <span id="sidebarScopePrice" class="sidebar-price-live text-lg font-bold text-white mono mt-1 block">$0.00412</span>
+        <span id="sidebarScopeChange" class="text-[11px] text-emerald-400 mono">&#9650; +148.5% (24h)</span>
+        <div class="mt-3 pt-3 border-t border-gray-800 space-y-1.5 text-[11px]">
+          <div class="flex justify-between text-gray-400">
+            <span>CA:</span>
+            <span class="mono text-gray-300 cursor-pointer hover:text-teal-300" onclick="copyToClipboard('0xf99E32f9894363C5C3AD889Ed2dfF76f30057F0c','sideCaCopy')" id="sideCaCopy">0xf99E...7F0c &#128203;</span>
+          </div>
+          <div class="flex justify-between text-gray-400">
+            <span>Holders:</span><span id="sidebarScopeHolders" class="mono text-gray-200">1</span>
+          </div>
+        </div>
+        <a href="https://testnet.vibevibe.fun/token/0xf99E32f9894363C5C3AD889Ed2dfF76f30057F0c" target="_blank"
+           class="mt-3 block w-full text-center py-1.5 bg-teal-500 hover:bg-teal-400 text-gray-950 font-bold rounded-lg transition">
+          Trade on vibe/vibe &#8599;
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content-wrap flex-1 p-4 lg:p-6 overflow-y-auto max-w-7xl">
+
+      <!-- PANE 1: DASHBOARD -->
+      <section id="pane-dashboard" class="tab-pane space-y-6">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="card-vibe p-4">
+            <div class="text-xs text-gray-400">$SCOPE Market Cap</div>
+            <div class="text-xl lg:text-2xl font-bold mono text-white mt-1" id="dashScopeMcap">$8.2K</div>
+            <div class="text-[11px] text-teal-400 mono mt-1" id="dashScopeCurve">1.96% Bonding Curve</div>
+          </div>
+          <div class="card-vibe p-4">
+            <div class="text-xs text-gray-400">$SCOPE Holders</div>
+            <div class="text-xl lg:text-2xl font-bold mono text-white mt-1" id="dashScopeHolders">1</div>
+            <div class="text-[11px] text-emerald-400 mono mt-1">&#10003; Verified on Blockscan</div>
+          </div>
+          <div class="card-vibe p-4">
+            <div class="text-xs text-gray-400">Active Launchpad Tokens</div>
+            <div class="text-xl lg:text-2xl font-bold mono text-white mt-1" id="statTokenCount">6</div>
+            <div class="text-[11px] text-teal-400 mono mt-1">Live on vibe/vibe</div>
+          </div>
+          <div class="card-vibe p-4">
+            <div class="text-xs text-gray-400">Tracked Whale Wallets</div>
+            <div class="text-xl lg:text-2xl font-bold mono text-white mt-1" id="statWhaleCount">22</div>
+            <div class="text-[11px] text-teal-400 mono mt-1">&#128051; Real on-chain traders</div>
+          </div>
+        </div>
+
+        <!-- Sentiment Bar -->
+        <div class="card-vibe p-4">
+          <div class="flex items-center justify-between mb-2 text-xs">
+            <span class="text-emerald-400 mono font-semibold" id="whaleBuyRatioText">68% Buys</span>
+            <span class="text-gray-400 font-semibold">Market Sentiment: <span class="text-teal-300">ACCUMULATION</span></span>
+            <span class="text-rose-400 mono font-semibold" id="whaleSellRatioText">32% Sells</span>
+          </div>
+          <div class="w-full h-3 rounded-full bg-rose-500/30 overflow-hidden">
+            <div id="whaleBuyRatioBar" class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-1000" style="width:68%"></div>
+          </div>
+        </div>
+
+        <!-- $SCOPE Banner -->
+        <div class="card-vibe p-4 border-teal-500/30 bg-gradient-to-r from-teal-950/40 to-transparent flex items-center gap-4">
+          <img src="logo.jpg" alt="SCOPE" class="w-12 h-12 rounded-full border-2 border-teal-500/50 glow-vibe shrink-0">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-bold text-white flex items-center gap-2">
+              VibeScope <span class="text-teal-400">($SCOPE)</span>
+              <span class="text-[10px] bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/30 mono">NATIVE TOKEN</span>
+            </div>
+            <div class="text-xs text-gray-400 mt-0.5">Official analytics utility token &mdash; Robinhood Chain Testnet</div>
+          </div>
+          <div class="shrink-0 text-right">
+            <div class="text-lg font-bold mono text-white" id="bannerScopePrice">$0.00412</div>
+            <div class="text-xs text-emerald-400 mono">+148.5%</div>
+          </div>
+        </div>
+
+        <!-- Trending Table -->
+        <div class="card-vibe overflow-hidden">
+          <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">&#128202; Trending Tokens <span class="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></span></h2>
+            <span class="text-xs text-gray-400 mono">LIVE</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-800/80 text-xs text-gray-400 uppercase tracking-wide">
+                  <th class="py-3 px-4 text-left">#</th>
+                  <th class="py-3 px-4 text-left">Token</th>
+                  <th class="py-3 px-4 text-right">Price</th>
+                  <th class="py-3 px-4 text-right">24h</th>
+                  <th class="py-3 px-4 text-right hidden sm:table-cell">Volume</th>
+                  <th class="py-3 px-4 text-right hidden md:table-cell">MCap</th>
+                  <th class="py-3 px-4 text-right hidden lg:table-cell">Curve</th>
+                  <th class="py-3 px-4 hidden xl:table-cell">7D</th>
+                  <th class="py-3 px-4 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody id="trendingTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- New Launches Feed -->
+        <div class="card-vibe p-4">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">&#128640; New Launches <span class="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></span></h3>
+          <div id="newLaunchFeed" class="space-y-0"></div>
+        </div>
+      </section>
+
+      <!-- PANE 2: WHALE RADAR -->
+      <section id="pane-whales" class="tab-pane hidden space-y-6">
+        <div class="card-vibe p-4">
+          <div class="flex items-center justify-between mb-2 text-xs">
+            <span class="text-emerald-400 mono font-semibold" id="whaleBuyRatioText2">68% Buys</span>
+            <span class="text-gray-300 font-semibold">&#128051; Whale Pressure Meter</span>
+            <span class="text-rose-400 mono font-semibold" id="whaleSellRatioText2">32% Sells</span>
+          </div>
+          <div class="w-full h-2.5 rounded-full bg-rose-500/30 overflow-hidden">
+            <div id="whaleBuyRatioBar2" class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-1000" style="width:68%"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs text-gray-400">Filter:</span>
+          <button data-filter="ALL" class="whale-filter-btn px-3 py-1 rounded mono text-xs font-semibold bg-teal-500 text-gray-900">ALL</button>
+          <button data-filter="BUY" class="whale-filter-btn px-3 py-1 rounded mono text-xs font-semibold bg-gray-800 text-emerald-400 border border-emerald-500/30">BUY ONLY</button>
+          <button data-filter="SELL" class="whale-filter-btn px-3 py-1 rounded mono text-xs font-semibold bg-gray-800 text-rose-400 border border-rose-500/30">SELL ONLY</button>
+          <button data-filter="100" class="whale-filter-btn px-3 py-1 rounded mono text-xs font-semibold bg-gray-800 text-gray-300 border border-gray-700">$100+</button>
+          <button data-filter="500" class="whale-filter-btn px-3 py-1 rounded mono text-xs font-semibold bg-gray-800 text-gray-300 border border-gray-700">$500+</button>
+        </div>
+        <div id="whaleFeedContainer" class="space-y-2"></div>
+      </section>
+
+      <!-- PANE 3: TOKEN TERMINAL -->
+      <section id="pane-charts" class="tab-pane hidden space-y-4">
+        
+        <!-- Search Bar -->
+        <div class="card-vibe p-3">
+          <div class="relative">
+            <input id="terminalSearchInput" type="text" placeholder="Paste Token Contract Address (CA) here..."
+              class="w-full bg-[#0b0f19] border border-gray-700 rounded-lg p-2.5 pr-24 text-sm text-gray-100 mono focus:border-teal-400 outline-none transition"
+              oninput="searchTerminalCA(this.value)">
+            <button onclick="searchTerminalCA(document.getElementById('terminalSearchInput').value)"
+              class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 text-xs font-bold rounded border border-teal-500/30 transition">
+              Search
+            </button>
+          </div>
+          <div id="terminalSearchError" class="hidden mt-2 text-xs text-rose-400 mono">Token not found in registry.</div>
+        </div>
+
+        <div class="card-vibe p-4" id="terminalTokenCard" style="display: none;">
+          <div class="flex items-center gap-3 flex-wrap">
+            <img id="chartTokenLogo" src="logo.jpg" class="w-10 h-10 rounded-full border border-teal-500/40 object-cover">
+            <span id="chartTokenEmoji" class="text-3xl hidden"></span>
+            <div>
+              <div id="chartTokenName" class="font-bold text-white text-base">VibeScope</div>
+              <div id="chartTokenTicker" class="text-xs text-teal-400 mono">$SCOPE</div>
+            </div>
+            <div class="flex items-center gap-4 ml-auto flex-wrap text-right">
+              <div>
+                <div class="text-xs text-gray-400">Price</div>
+                <div id="chartTokenPrice" class="text-lg font-bold mono text-white">$0.00412</div>
+                <div id="chartTokenChange" class="text-xs mono font-semibold text-emerald-400">+148.5%</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-400">MCap</div>
+                <div id="chartTokenMcap" class="text-base font-semibold mono text-gray-200">$412K</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-400">Volume</div>
+                <div id="chartTokenVolume" class="text-base font-semibold mono text-gray-200">$52.4K</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-400">Liquidity</div>
+                <div id="chartTokenLiquidity" class="text-base font-semibold mono text-gray-200">$118.2K</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-400">Holders</div>
+                <div id="chartTokenHolders" class="text-base font-semibold mono text-gray-200">1</div>
+              </div>
+              <div>
+                <a id="chartTokenVibeLink" href="https://testnet.vibevibe.fun" target="_blank"
+                   class="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-gray-950 font-bold text-xs rounded-lg transition inline-block">
+                  Trade on vibe/vibe &#8599;
+                </a>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 text-xs text-gray-500 mono flex items-center gap-2">
+            <span>CA:</span>
+            <span id="chartTokenCA" class="text-gray-400 cursor-pointer hover:text-teal-300" onclick="copyToClipboard(document.getElementById('chartTokenCA').textContent)">0xf99E...7F0c</span>
+          </div>
+        </div>
+        <div class="card-vibe p-4" id="terminalChartBody" style="display: none;">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs text-gray-400 mr-1">Interval:</span>
+              <button data-tf="1m" class="timeframe-btn px-2.5 py-1 text-xs rounded mono font-semibold bg-gray-800 text-gray-300 hover:bg-gray-700">1m</button>
+              <button data-tf="5m" class="timeframe-btn px-2.5 py-1 text-xs rounded mono font-semibold bg-gray-800 text-gray-300 hover:bg-gray-700">5m</button>
+              <button data-tf="15m" class="timeframe-btn active px-2.5 py-1 text-xs rounded mono font-semibold bg-teal-500 text-gray-900">15m</button>
+              <button data-tf="1h" class="timeframe-btn px-2.5 py-1 text-xs rounded mono font-semibold bg-gray-800 text-gray-300 hover:bg-gray-700">1h</button>
+              <button data-tf="1D" class="timeframe-btn px-2.5 py-1 text-xs rounded mono font-semibold bg-gray-800 text-gray-300 hover:bg-gray-700">1D</button>
+            </div>
+            <div class="text-xs text-gray-400 mono hidden sm:flex items-center gap-1.5">
+              <span>&#128260; Auto-Buybacks Active:</span>
+              <span class="text-teal-400 font-bold">0.46875% per trade</span>
+            </div>
+          </div>
+          <div class="mt-4 h-80 w-full relative">
+            <canvas id="mainPriceChartCanvas"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 4: PNL CALCULATOR -->
+      <section id="pane-calculator" class="tab-pane hidden space-y-6">
+        <div class="card-vibe p-6 max-w-2xl mx-auto">
+          <div class="flex items-center justify-between border-b border-gray-800 pb-4">
+            <div>
+              <h2 class="text-lg font-bold text-white flex items-center gap-2">&#129518; Smart Position &amp; PNL Calculator</h2>
+              <p class="text-xs text-gray-400 mt-0.5">Factor in real vibe/vibe launchpad fee &amp; auto-buyback parameters</p>
+            </div>
+            <span class="text-xs bg-teal-500/10 text-teal-400 border border-teal-500/30 px-2 py-0.5 rounded mono">PRO SIMULATOR</span>
+          </div>
+          <div class="mt-6 space-y-4">
+            <!-- CA Lookup -->
+            <div>
+              <label class="block text-xs font-semibold text-gray-400 mb-1.5">Paste Contract Address (CA)</label>
+              <div class="relative">
+                <input id="calcCAInput" type="text" placeholder="0x... paste CA token di sini"
+                  class="w-full bg-[#0b0f19] border border-gray-700 rounded-lg p-2.5 pr-24 text-sm text-gray-100 mono focus:border-teal-400 outline-none transition"
+                  oninput="lookupTokenByCA(this.value)">
+                <button onclick="lookupTokenByCA(document.getElementById('calcCAInput').value)"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 text-xs font-bold rounded border border-teal-500/30 transition">
+                  Lookup
+                </button>
+              </div>
+              <div id="calcTokenPreview" class="hidden mt-2 p-3 rounded-lg bg-[#0b0f19] border border-teal-500/30 flex items-center gap-3">
+                <span id="calcPreviewLogo" class="text-2xl">&#128301;</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span id="calcPreviewName" class="text-sm font-bold text-white">VibeScope</span>
+                    <span id="calcPreviewTicker" class="text-xs bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded mono border border-teal-500/30">$SCOPE</span>
+                    <span id="calcPreviewBadge" class="hidden text-xs bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">&#10003; Verified</span>
+                  </div>
+                  <div id="calcPreviewCA" class="text-[10px] text-gray-500 mono mt-0.5 truncate"></div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div id="calcPreviewPrice" class="text-sm font-bold mono text-teal-300">$0.00412</div>
+                  <div id="calcPreviewChange" class="text-[10px] text-emerald-400 mono">+148.5%</div>
+                </div>
+              </div>
+              <div id="calcTokenNotFound" class="hidden mt-2 p-2.5 rounded-lg bg-rose-950/30 border border-rose-500/30 text-xs text-rose-300 mono">
+                &#9888; CA tidak ditemukan di registry VibeScope. Masukkan harga manual di bawah.
+              </div>
+            </div>
+            <!-- Inputs -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1.5">Capital ($ USD)</label>
+                <input id="calcCapital" type="number" value="100" class="w-full bg-[#0b0f19] border border-gray-700 rounded-lg p-2.5 text-sm text-gray-100 mono focus:border-teal-400 outline-none">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1.5">Entry Price ($)</label>
+                <input id="calcEntryPrice" type="number" step="0.000001" class="w-full bg-[#0b0f19] border border-gray-700 rounded-lg p-2.5 text-sm text-gray-100 mono focus:border-teal-400 outline-none">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1.5">Target Exit Price ($)</label>
+                <input id="calcTargetPrice" type="number" step="0.000001" value="0.00824" class="w-full bg-[#0b0f19] border border-gray-700 rounded-lg p-2.5 text-sm text-gray-100 mono focus:border-teal-400 outline-none">
+              </div>
+            </div>
+            <!-- Results -->
+            <div class="mt-2 p-4 rounded-xl bg-[#0b0f19] border border-gray-800 space-y-3">
+              <div class="flex justify-between text-xs text-gray-400">
+                <span>Tokens Acquired:</span>
+                <span id="calcOutTokenQty" class="mono text-gray-200 font-semibold">24,272 SCOPE</span>
+              </div>
+              <div class="flex justify-between text-xs text-gray-400">
+                <span>Gross Target Value:</span>
+                <span id="calcOutGrossVal" class="mono text-gray-200 font-semibold">$200.00</span>
+              </div>
+              <div class="flex justify-between text-xs text-gray-400">
+                <span>Gross Profit (before fees):</span>
+                <span id="calcOutGrossProfit" class="mono text-emerald-400 font-semibold">+$100.00</span>
+              </div>
+              <div class="pt-2 border-t border-gray-800 space-y-1.5">
+                <div class="flex justify-between text-xs text-gray-400">
+                  <span>vibe/vibe Launchpad Fee (1.25%):</span>
+                  <span id="calcOutFeeTotal" class="mono text-rose-400">-$2.50</span>
+                </div>
+                <div class="flex justify-between text-[11px] text-gray-500 pl-3">
+                  <span>&#8627; Creator Share (0.46875%):</span>
+                  <span id="calcOutCreatorFee" class="mono text-gray-400">$0.938</span>
+                </div>
+                <div class="flex justify-between text-[11px] text-gray-500 pl-3">
+                  <span>&#8627; Auto-Buybacks (0.46875%):</span>
+                  <span id="calcOutBuybackFee" class="mono text-gray-400">$0.938</span>
+                </div>
+              </div>
+              <div class="pt-3 border-t border-gray-800 flex items-center justify-between">
+                <div>
+                  <div class="text-xs text-gray-400 font-medium">Estimated Net Return</div>
+                  <div class="text-[11px] text-gray-500">Includes all launchpad fees</div>
+                </div>
+                <div id="calcOutNetProfit" class="text-2xl font-bold mono text-emerald-400">+$97.50 (+97.5%)</div>
+              </div>
+            </div>
+            <!-- CTA -->
+            <div class="p-3.5 rounded-lg bg-teal-950/30 border border-teal-500/30 flex items-center justify-between">
+              <div class="text-xs text-gray-300">
+                &#128161; <span class="text-teal-300 font-semibold">Pro Feature:</span> Hold 10,000 $SCOPE to unlock automated trailing stop-loss alerts.
+              </div>
+              <button onclick="switchTab('scope')" class="px-3 py-1 bg-teal-500 hover:bg-teal-400 text-gray-950 text-xs font-bold rounded transition shrink-0">Learn More</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 5: $SCOPE TOKEN HUB -->
+      <section id="pane-scope" class="tab-pane hidden space-y-6">
+        <div class="card-vibe p-6 border-teal-500/30 bg-gradient-to-br from-teal-950/40 to-[#0d121d]">
+          <div class="flex items-center gap-5">
+            <img src="logo.jpg" alt="SCOPE" class="w-16 h-16 rounded-full border-2 border-teal-500/60 glow-vibe shrink-0">
+            <div>
+              <h1 class="text-2xl font-bold text-white">VibeScope <span class="text-teal-400">($SCOPE)</span></h1>
+              <p class="text-sm text-gray-400 mt-1">Native utility token &mdash; Analytics, Whale Radar, and PNL Intelligence on Robinhood Chain Testnet</p>
+              <div class="flex items-center gap-3 mt-3 flex-wrap">
+                <span class="text-2xl font-bold mono text-white" id="hubScopePrice">$0.00412</span>
+                <span class="text-emerald-400 font-semibold mono" id="hubScopeChange">+148.5% (24h)</span>
+                <a href="https://testnet.vibevibe.fun/token/0xf99E32f9894363C5C3AD889Ed2dfF76f30057F0c" target="_blank"
+                   class="px-4 py-1.5 bg-teal-500 hover:bg-teal-400 text-gray-950 font-bold text-sm rounded-lg transition">
+                  Trade on vibe/vibe &#8599;
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="card-vibe p-4 text-center"><div class="text-xs text-gray-400">Market Cap</div><div class="text-xl font-bold mono text-white mt-1" id="hubScopeMcap">$8.2K</div></div>
+          <div class="card-vibe p-4 text-center"><div class="text-xs text-gray-400">Holders</div><div class="text-xl font-bold mono text-white mt-1" id="hubScopeHolders">1</div></div>
+          <div class="card-vibe p-4 text-center"><div class="text-xs text-gray-400">Volume 24h</div><div class="text-xl font-bold mono text-white mt-1" id="hubScopeVolume">$1.2K</div></div>
+          <div class="card-vibe p-4 text-center"><div class="text-xs text-gray-400">Bonding Curve</div><div class="text-xl font-bold mono text-teal-400 mt-1" id="hubScopeCurve">1.96%</div></div>
+        </div>
+        <div class="card-vibe p-4">
+          <div class="text-xs text-gray-400 mb-2">Contract Address (CA)</div>
+          <div class="flex items-center gap-3 mono text-sm bg-[#0b0f19] rounded-lg p-3 border border-gray-800">
+            <span class="text-teal-300 break-all">0xf99E32f9894363C5C3AD889Ed2dfF76f30057F0c</span>
+            <button onclick="copyToClipboard('0xf99E32f9894363C5C3AD889Ed2dfF76f30057F0c','scopeCACopy')" id="scopeCACopy"
+              class="shrink-0 px-3 py-1 bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 text-xs rounded border border-teal-500/30 transition">
+              Copy &#128203;
+            </button>
+          </div>
+        </div>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="card-vibe p-4">
+            <h3 class="text-sm font-bold text-white mb-3">Tokenomics</h3>
+            <div class="h-48 relative"><canvas id="tokenomicsChartCanvas"></canvas></div>
+          </div>
+          <div class="card-vibe p-4">
+            <h3 class="text-sm font-bold text-white mb-3">&#128142; Holder Tiers</h3>
+            <div class="space-y-2 text-xs">
+              <div class="flex justify-between py-2 border-b border-gray-800">
+                <span class="text-gray-300">&#128311; Diamond (100K+ SCOPE)</span>
+                <span class="text-teal-400 mono font-semibold">Custom Alerts + API</span>
+              </div>
+              <div class="flex justify-between py-2 border-b border-gray-800">
+                <span class="text-gray-300">&#127945; Gold (50K+ SCOPE)</span>
+                <span class="text-yellow-400 mono font-semibold">Whale Notifications</span>
+              </div>
+              <div class="flex justify-between py-2 border-b border-gray-800">
+                <span class="text-gray-300">&#127944; Silver (10K+ SCOPE)</span>
+                <span class="text-gray-300 mono font-semibold">Stop-Loss Alerts</span>
+              </div>
+              <div class="flex justify-between py-2">
+                <span class="text-gray-400">&#128994; Standard (&lt; 10K)</span>
+                <span class="text-gray-400 mono">Dashboard Access</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 6: SETTINGS -->
+      <section id="pane-settings" class="tab-pane hidden space-y-4">
+        <div class="card-vibe p-6 max-w-xl">
+          <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">&#9881;&#65039; Settings &amp; Info</h2>
+          <p class="text-xs text-gray-400 mb-6">Konfigurasi VibeScope dan quick links</p>
+          <div class="space-y-0 divide-y divide-gray-800">
+            <div class="flex items-center justify-between py-4">
+              <div><div class="text-sm font-medium text-gray-200">Sound Alerts</div><div class="text-xs text-gray-500">Audio on new whale transactions</div></div>
+              <button onclick="document.getElementById('soundAlertToggle').click()" class="px-4 py-1.5 bg-gray-800 border border-gray-700 hover:border-teal-500/40 rounded-lg text-xs font-semibold transition">Toggle</button>
+            </div>
+            <div class="flex items-center justify-between py-4">
+              <div><div class="text-sm font-medium text-gray-200">vibe/vibe Launchpad</div><div class="text-xs text-gray-500">Robinhood Chain Testnet</div></div>
+              <a href="https://testnet.vibevibe.fun" target="_blank" class="px-4 py-1.5 bg-teal-500/10 border border-teal-500/30 text-teal-300 rounded-lg text-xs font-semibold transition">Open &#8599;</a>
+            </div>
+            <div class="flex items-center justify-between py-4">
+              <div><div class="text-sm font-medium text-gray-200">$SCOPE Contract</div><div class="text-xs text-gray-500 mono">0xf99E...7F0c</div></div>
+              <button onclick="copyToClipboard('0xf99E32f9894363C5C3AD889Ed2dfF76f30057F0c')" class="px-4 py-1.5 bg-gray-800 border border-gray-700 hover:border-teal-500/40 rounded-lg text-xs font-semibold transition">Copy CA &#128203;</button>
+            </div>
+            <div class="flex items-center justify-between py-4">
+              <div><div class="text-sm font-medium text-gray-200">Builders Discord</div><div class="text-xs text-gray-500">vibe/vibe builder community</div></div>
+              <a href="https://discord.gg/vibevibebuilders" target="_blank" class="px-4 py-1.5 bg-gray-800 border border-gray-700 hover:border-teal-500/40 rounded-lg text-xs font-semibold transition">Join &#8599;</a>
+            </div>
+            <div class="flex items-center justify-between py-4">
+              <div><div class="text-sm font-medium text-gray-200">Block Explorer</div><div class="text-xs text-gray-500">Robinhood Chain Testnet</div></div>
+              <a href="https://explorer.testnet.chain.robinhood.com" target="_blank" class="px-4 py-1.5 bg-gray-800 border border-gray-700 hover:border-teal-500/40 rounded-lg text-xs font-semibold transition">Open &#8599;</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Mobile Bottom Nav -->
+  <nav id="bottom-nav">
+    <button onclick="switchTab('dashboard')" class="flex flex-col items-center text-gray-400 hover:text-teal-400 transition text-[10px] gap-1 px-3"><span class="text-lg">&#128202;</span><span>Dashboard</span></button>
+    <button onclick="switchTab('whales')" class="flex flex-col items-center text-gray-400 hover:text-teal-400 transition text-[10px] gap-1 px-3"><span class="text-lg">&#128051;</span><span>Whales</span></button>
+    <button onclick="switchTab('charts')" class="flex flex-col items-center text-gray-400 hover:text-teal-400 transition text-[10px] gap-1 px-3"><span class="text-lg">&#128200;</span><span>Charts</span></button>
+    <button onclick="switchTab('calculator')" class="flex flex-col items-center text-gray-400 hover:text-teal-400 transition text-[10px] gap-1 px-3"><span class="text-lg">&#129518;</span><span>PNL</span></button>
+    <button onclick="switchTab('scope')" class="flex flex-col items-center text-teal-300 transition text-[10px] gap-1 px-3"><span class="text-lg">&#128301;</span><span>$SCOPE</span></button>
+  </nav>
+
+  <script src="data.js"></script>
+  <script src="chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
